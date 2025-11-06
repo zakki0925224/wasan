@@ -1,0 +1,13 @@
+[package]
+name = "wasan"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1.0.100"
+nom = "8.0.0"
+nom-leb128 = "0.2.0"
+num-derive = "0.4.2"
+num-traits = "0.2.19"
+pretty_assertions = "1.4.1"
+wat = "1.240.0"
