@@ -36,3 +36,33 @@ pub struct Export {
     pub name: String,
     pub desc: ExportDesc,
 }
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ImportDesc {
+    Func(u32),
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct Import {
+    pub module: String,
+    pub field: String,
+    pub desc: ImportDesc,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Limits {
+    pub min: u32,
+    pub max: Option<u32>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Memory {
+    pub limits: Limits,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Data {
+    pub memory_index: u32,
+    pub offset: u32,
+    pub init: Vec<u8>,
+}
