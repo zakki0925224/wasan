@@ -3,13 +3,13 @@ use std::collections::HashMap;
 
 pub const PAGE_SIZE: u32 = 65536; // 64KiB
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Func {
     pub locals: Vec<ValueType>,
     pub body: Vec<Instruction>,
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct InternalFuncInst {
     pub func_type: FuncType,
     pub code: Func,
@@ -22,13 +22,13 @@ pub struct ExternalFuncInst {
     pub func_type: FuncType,
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub enum FuncInst {
     Internal(InternalFuncInst),
     External(ExternalFuncInst),
 }
 
-#[derive(Default, Debug, Clone)]
+#[derive(Debug, Default, Clone)]
 pub struct MemoryInst {
     pub data: Vec<u8>,
     pub max: Option<u32>,
@@ -39,6 +39,112 @@ pub struct Store {
     pub funcs: Vec<FuncInst>,
     pub module: ModuleInst,
     pub memories: Vec<MemoryInst>,
+}
+
+impl std::fmt::Debug for Store {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let internal_funcs = self
+            .funcs
+            .iter()
+            .filter(|f| matches!(f, FuncInst::Internal(_)))
+            .count();
+        let external_funcs = self
+            .funcs
+            .iter()
+            .filter(|f| matches!(f, FuncInst::External(_)))
+            .count();
+
+        let total_memory: usize = self.memories.iter().map(|m| m.data.len()).sum();
+        let memory_info: Vec<String> = self
+            .memories
+            .iter()
+            .enumerate()
+            .map(|(i, m)| format!("  [{}]: {} bytes (max: {:?} pages)", i, m.data.len(), m.max))
+            .collect();
+
+        let exports: Vec<String> = self
+            .module
+            .exports
+            .keys()
+            .map(|k| format!("  - {}", k))
+            .collect();
+
+        let func_names: HashMap<u32, String> = self
+            .module
+            .exports
+            .iter()
+            .filter_map(|(name, export)| match export.desc {
+                ExportDesc::Func(idx) => Some((idx, name.clone())),
+            })
+            .collect();
+
+        writeln!(f, "Store {{")?;
+        writeln!(
+            f,
+            "  funcs: {} total ({} internal, {} external)",
+            self.funcs.len(),
+            internal_funcs,
+            external_funcs
+        )?;
+
+        for (idx, func) in self.funcs.iter().enumerate() {
+            let func_name = func_names.get(&(idx as u32));
+            let name_display = func_name.map(|n| format!(" ({})", n)).unwrap_or_default();
+
+            match func {
+                FuncInst::Internal(internal) => {
+                    writeln!(f, "    [{}] Internal{}:", idx, name_display)?;
+                    writeln!(
+                        f,
+                        "      type: {:?} -> {:?}",
+                        internal.func_type.params, internal.func_type.results
+                    )?;
+                    writeln!(f, "      locals: {:?}", internal.code.locals)?;
+                    writeln!(f, "      instructions: {} total", internal.code.body.len())?;
+                    for (i, inst) in internal.code.body.iter().enumerate() {
+                        writeln!(f, "        {}: {:?}", i, inst)?;
+                    }
+                }
+                FuncInst::External(external) => {
+                    writeln!(
+                        f,
+                        "    [{}] External{}: {}.{}",
+                        idx, name_display, external.module, external.func
+                    )?;
+                    writeln!(
+                        f,
+                        "      type: {:?} -> {:?}",
+                        external.func_type.params, external.func_type.results
+                    )?;
+                }
+            }
+        }
+
+        if !memory_info.is_empty() {
+            writeln!(
+                f,
+                "  memories: {} total ({} bytes)",
+                self.memories.len(),
+                total_memory
+            )?;
+            for mem in &memory_info {
+                writeln!(f, "{}", mem)?;
+            }
+        } else {
+            writeln!(f, "  memories: 0")?;
+        }
+
+        if !exports.is_empty() {
+            writeln!(f, "  exports: {}", exports.len())?;
+            for export in &exports {
+                writeln!(f, "{}", export)?;
+            }
+        } else {
+            writeln!(f, "  exports: 0")?;
+        }
+
+        write!(f, "}}")
+    }
 }
 
 impl Store {
@@ -154,12 +260,13 @@ impl Store {
     }
 }
 
+#[derive(Debug)]
 pub struct ExportInst {
     pub name: String,
     pub desc: ExportDesc,
 }
 
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct ModuleInst {
     pub exports: HashMap<String, ExportInst>,
 }

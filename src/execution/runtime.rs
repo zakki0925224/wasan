@@ -3,7 +3,7 @@ use crate::{
     execution::{import, store::*, value::Value, wasi::WasiSnapshotPreview1},
 };
 
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct Frame {
     pub pc: isize,
     pub sp: usize,

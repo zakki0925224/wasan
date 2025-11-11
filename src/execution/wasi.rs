@@ -1,7 +1,7 @@
 use crate::execution::{store::Store, value::Value};
 use std::{fs::File, io::prelude::*, os::fd::FromRawFd};
 
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct WasiSnapshotPreview1 {
     pub file_table: Vec<Box<File>>,
 }
