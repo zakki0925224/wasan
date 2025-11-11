@@ -26,7 +26,6 @@ fn main() -> anyhow::Result<()> {
     let wasi = WasiSnapshotPreview1::new();
     let mut runtime = Runtime::instantiate_with_wasi(wasm, wasi)?;
     println!("{:?}", runtime.store);
-    println!("{:?}", runtime.wasi);
 
     runtime.call("_start", vec![])?;
     Ok(())

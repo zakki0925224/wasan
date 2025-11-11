@@ -102,7 +102,6 @@ impl Runtime {
                         }
                     }
                 }
-                _ => todo!(),
             }
         }
 
