@@ -8,6 +8,26 @@ use nom::{
 use nom_leb128::{leb128_i32, leb128_u32};
 use num_traits::FromPrimitive as _;
 
+fn leb128_u32_(input: &[u8]) -> IResult<&[u8], u32, nom::error::Error<&[u8]>> {
+    match leb128_u32::<&[u8], ()>(input) {
+        Ok(result) => Ok(result),
+        Err(_) => Err(nom::Err::Error(nom::error::Error::new(
+            input,
+            nom::error::ErrorKind::Verify,
+        ))),
+    }
+}
+
+fn leb128_i32_(input: &[u8]) -> IResult<&[u8], i32, nom::error::Error<&[u8]>> {
+    match leb128_i32::<&[u8], ()>(input) {
+        Ok(result) => Ok(result),
+        Err(_) => Err(nom::Err::Error(nom::error::Error::new(
+            input,
+            nom::error::ErrorKind::Verify,
+        ))),
+    }
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub struct Module {
     pub magic: String,
@@ -107,15 +127,7 @@ impl Module {
 
 fn decode_section_header(input: &[u8]) -> IResult<&[u8], (SectionCode, u32)> {
     let (input, code) = le_u8(input)?;
-    let (input, size) = match leb128_u32::<&[u8], ()>(input) {
-        Ok(result) => result,
-        Err(_) => {
-            return Err(nom::Err::Error(nom::error::Error::new(
-                input,
-                nom::error::ErrorKind::Verify,
-            )));
-        }
-    };
+    let (input, size) = leb128_u32_(input)?;
     Ok((
         input,
         (
@@ -132,43 +144,18 @@ fn decode_value_type(input: &[u8]) -> IResult<&[u8], ValueType> {
 
 fn decode_type_section(input: &[u8]) -> IResult<&[u8], Vec<FuncType>> {
     let mut func_types: Vec<FuncType> = vec![];
-
-    let (mut input, count) = match leb128_u32::<&[u8], ()>(input) {
-        Ok(result) => result,
-        Err(_) => {
-            return Err(nom::Err::Error(nom::error::Error::new(
-                input,
-                nom::error::ErrorKind::Verify,
-            )));
-        }
-    };
+    let (mut input, count) = leb128_u32_(input)?;
 
     for _ in 0..count {
         let (rest, _) = le_u8(input)?;
         let mut func = FuncType::default();
 
-        let (rest, size) = match leb128_u32::<&[u8], ()>(rest) {
-            Ok(result) => result,
-            Err(_) => {
-                return Err(nom::Err::Error(nom::error::Error::new(
-                    rest,
-                    nom::error::ErrorKind::Verify,
-                )));
-            }
-        };
+        let (rest, size) = leb128_u32_(rest)?;
         let (rest, types) = take(size)(rest)?;
         let (_, types) = many0(decode_value_type).parse(types)?;
         func.params = types;
 
-        let (rest, size) = match leb128_u32::<&[u8], ()>(rest) {
-            Ok(result) => result,
-            Err(_) => {
-                return Err(nom::Err::Error(nom::error::Error::new(
-                    rest,
-                    nom::error::ErrorKind::Verify,
-                )));
-            }
-        };
+        let (rest, size) = leb128_u32_(rest)?;
         let (rest, types) = take(size)(rest)?;
         let (_, types) = many0(decode_value_type).parse(types)?;
         func.results = types;
@@ -182,26 +169,10 @@ fn decode_type_section(input: &[u8]) -> IResult<&[u8], Vec<FuncType>> {
 
 fn decode_function_section(input: &[u8]) -> IResult<&[u8], Vec<u32>> {
     let mut func_idx_list = vec![];
-    let (mut input, count) = match leb128_u32::<&[u8], ()>(input) {
-        Ok(result) => result,
-        Err(_) => {
-            return Err(nom::Err::Error(nom::error::Error::new(
-                input,
-                nom::error::ErrorKind::Verify,
-            )));
-        }
-    };
+    let (mut input, count) = leb128_u32_(input)?;
 
     for _ in 0..count {
-        let (rest, idx) = match leb128_u32::<&[u8], ()>(input) {
-            Ok(result) => result,
-            Err(_) => {
-                return Err(nom::Err::Error(nom::error::Error::new(
-                    input,
-                    nom::error::ErrorKind::Verify,
-                )));
-            }
-        };
+        let (rest, idx) = leb128_u32_(input)?;
         func_idx_list.push(idx);
         input = rest;
     }
@@ -211,27 +182,10 @@ fn decode_function_section(input: &[u8]) -> IResult<&[u8], Vec<u32>> {
 
 fn decode_function_body(input: &[u8]) -> IResult<&[u8], Function> {
     let mut body = Function::default();
-
-    let (mut input, count) = match leb128_u32::<&[u8], ()>(input) {
-        Ok(result) => result,
-        Err(_) => {
-            return Err(nom::Err::Error(nom::error::Error::new(
-                input,
-                nom::error::ErrorKind::Verify,
-            )));
-        }
-    };
+    let (mut input, count) = leb128_u32_(input)?;
 
     for _ in 0..count {
-        let (rest, type_count) = match leb128_u32::<&[u8], ()>(input) {
-            Ok(result) => result,
-            Err(_) => {
-                return Err(nom::Err::Error(nom::error::Error::new(
-                    input,
-                    nom::error::ErrorKind::Verify,
-                )));
-            }
-        };
+        let (rest, type_count) = leb128_u32_(input)?;
         let (rest, value_type) = le_u8(rest)?;
         body.locals.push(FunctionLocal {
             type_count,
@@ -256,74 +210,26 @@ fn decode_instructions(input: &[u8]) -> IResult<&[u8], Instruction> {
     let op = Opcode::from_u8(byte).unwrap_or_else(|| panic!("invalid opcode: {:X}", byte));
     let (rest, inst) = match op {
         Opcode::LocalGet => {
-            let (rest, idx) = match leb128_u32::<&[u8], ()>(input) {
-                Ok(result) => result,
-                Err(_) => {
-                    return Err(nom::Err::Error(nom::error::Error::new(
-                        input,
-                        nom::error::ErrorKind::Verify,
-                    )));
-                }
-            };
+            let (rest, idx) = leb128_u32_(input)?;
             (rest, Instruction::LocalGet(idx))
         }
         Opcode::LocalSet => {
-            let (rest, idx) = match leb128_u32::<&[u8], ()>(input) {
-                Ok(result) => result,
-                Err(_) => {
-                    return Err(nom::Err::Error(nom::error::Error::new(
-                        input,
-                        nom::error::ErrorKind::Verify,
-                    )));
-                }
-            };
+            let (rest, idx) = leb128_u32_(input)?;
             (rest, Instruction::LocalSet(idx))
         }
         Opcode::I32Store => {
-            let (rest, align) = match leb128_u32::<&[u8], ()>(input) {
-                Ok(result) => result,
-                Err(_) => {
-                    return Err(nom::Err::Error(nom::error::Error::new(
-                        input,
-                        nom::error::ErrorKind::Verify,
-                    )));
-                }
-            };
-            let (rest, offset) = match leb128_u32::<&[u8], ()>(rest) {
-                Ok(result) => result,
-                Err(_) => {
-                    return Err(nom::Err::Error(nom::error::Error::new(
-                        rest,
-                        nom::error::ErrorKind::Verify,
-                    )));
-                }
-            };
+            let (rest, align) = leb128_u32_(input)?;
+            let (rest, offset) = leb128_u32_(rest)?;
             (rest, Instruction::I32Store { align, offset })
         }
         Opcode::I32Const => {
-            let (rest, value) = match leb128_i32::<&[u8], ()>(input) {
-                Ok(result) => result,
-                Err(_) => {
-                    return Err(nom::Err::Error(nom::error::Error::new(
-                        input,
-                        nom::error::ErrorKind::Verify,
-                    )));
-                }
-            };
+            let (rest, value) = leb128_i32_(input)?;
             (rest, Instruction::I32Const(value))
         }
         Opcode::I32Add => (input, Instruction::I32Add),
         Opcode::End => (input, Instruction::End),
         Opcode::Call => {
-            let (rest, idx) = match leb128_u32::<&[u8], ()>(input) {
-                Ok(result) => result,
-                Err(_) => {
-                    return Err(nom::Err::Error(nom::error::Error::new(
-                        input,
-                        nom::error::ErrorKind::Verify,
-                    )));
-                }
-            };
+            let (rest, idx) = leb128_u32_(input)?;
             (rest, Instruction::Call(idx))
         }
     };
@@ -332,26 +238,10 @@ fn decode_instructions(input: &[u8]) -> IResult<&[u8], Instruction> {
 
 fn decode_code_section(input: &[u8]) -> IResult<&[u8], Vec<Function>> {
     let mut functions = vec![];
-    let (mut input, count) = match leb128_u32::<&[u8], ()>(input) {
-        Ok(result) => result,
-        Err(_) => {
-            return Err(nom::Err::Error(nom::error::Error::new(
-                input,
-                nom::error::ErrorKind::Verify,
-            )));
-        }
-    };
+    let (mut input, count) = leb128_u32_(input)?;
 
     for _ in 0..count {
-        let (rest, size) = match leb128_u32::<&[u8], ()>(input) {
-            Ok(result) => result,
-            Err(_) => {
-                return Err(nom::Err::Error(nom::error::Error::new(
-                    input,
-                    nom::error::ErrorKind::Verify,
-                )));
-            }
-        };
+        let (rest, size) = leb128_u32_(input)?;
         let (rest, body) = take(size)(rest)?;
         let (_, body) = decode_function_body(body)?;
         functions.push(body);
@@ -362,29 +252,13 @@ fn decode_code_section(input: &[u8]) -> IResult<&[u8], Vec<Function>> {
 }
 
 fn decode_export_section(input: &[u8]) -> IResult<&[u8], Vec<Export>> {
-    let (mut input, count) = match leb128_u32::<&[u8], ()>(input) {
-        Ok(result) => result,
-        Err(_) => {
-            return Err(nom::Err::Error(nom::error::Error::new(
-                input,
-                nom::error::ErrorKind::Verify,
-            )));
-        }
-    };
+    let (mut input, count) = leb128_u32_(input)?;
     let mut exports = vec![];
 
     for _ in 0..count {
         let (rest, name) = decode_name(input)?;
         let (rest, export_kind) = le_u8(rest)?;
-        let (rest, idx) = match leb128_u32::<&[u8], ()>(rest) {
-            Ok(result) => result,
-            Err(_) => {
-                return Err(nom::Err::Error(nom::error::Error::new(
-                    input,
-                    nom::error::ErrorKind::Verify,
-                )));
-            }
-        };
+        let (rest, idx) = leb128_u32_(rest)?;
         let desc = match export_kind {
             0x00 => ExportDesc::Func(idx),
             _ => unimplemented!("unsupported export kind: {:X}", export_kind),
@@ -397,15 +271,7 @@ fn decode_export_section(input: &[u8]) -> IResult<&[u8], Vec<Export>> {
 }
 
 fn decode_import_section(input: &[u8]) -> IResult<&[u8], Vec<Import>> {
-    let (mut input, count) = match leb128_u32::<&[u8], ()>(input) {
-        Ok(result) => result,
-        Err(_) => {
-            return Err(nom::Err::Error(nom::error::Error::new(
-                input,
-                nom::error::ErrorKind::Verify,
-            )));
-        }
-    };
+    let (mut input, count) = leb128_u32_(input)?;
     let mut imports = vec![];
 
     for _ in 0..count {
@@ -414,15 +280,7 @@ fn decode_import_section(input: &[u8]) -> IResult<&[u8], Vec<Import>> {
         let (rest, import_kind) = le_u8(rest)?;
         let (rest, desc) = match import_kind {
             0x00 => {
-                let (rest, idx) = match leb128_u32::<&[u8], ()>(rest) {
-                    Ok(result) => result,
-                    Err(_) => {
-                        return Err(nom::Err::Error(nom::error::Error::new(
-                            rest,
-                            nom::error::ErrorKind::Verify,
-                        )));
-                    }
-                };
+                let (rest, idx) = leb128_u32_(rest)?;
                 (rest, ImportDesc::Func(idx))
             }
             _ => unimplemented!("unsupported import kind: {:X}", import_kind),
@@ -441,50 +299,18 @@ fn decode_import_section(input: &[u8]) -> IResult<&[u8], Vec<Import>> {
 }
 
 fn decode_memory_section(input: &[u8]) -> IResult<&[u8], Memory> {
-    let (input, _) = match leb128_u32::<&[u8], ()>(input) {
-        Ok(result) => result,
-        Err(_) => {
-            return Err(nom::Err::Error(nom::error::Error::new(
-                input,
-                nom::error::ErrorKind::Verify,
-            )));
-        }
-    };
+    let (input, _) = leb128_u32_(input)?;
     let (_, limits) = decode_limits(input)?;
     Ok((input, Memory { limits }))
 }
 
 fn decode_limits(input: &[u8]) -> IResult<&[u8], Limits> {
-    let (input, flags) = match leb128_u32::<&[u8], ()>(input) {
-        Ok(result) => result,
-        Err(_) => {
-            return Err(nom::Err::Error(nom::error::Error::new(
-                input,
-                nom::error::ErrorKind::Verify,
-            )));
-        }
-    };
-    let (input, min) = match leb128_u32::<&[u8], ()>(input) {
-        Ok(result) => result,
-        Err(_) => {
-            return Err(nom::Err::Error(nom::error::Error::new(
-                input,
-                nom::error::ErrorKind::Verify,
-            )));
-        }
-    };
+    let (input, flags) = leb128_u32_(input)?;
+    let (input, min) = leb128_u32_(input)?;
     let max = if flags == 0 {
         None
     } else {
-        let (_, max) = match leb128_u32::<&[u8], ()>(input) {
-            Ok(result) => result,
-            Err(_) => {
-                return Err(nom::Err::Error(nom::error::Error::new(
-                    input,
-                    nom::error::ErrorKind::Verify,
-                )));
-            }
-        };
+        let (_, max) = leb128_u32_(input)?;
         Some(max)
     };
 
@@ -492,72 +318,22 @@ fn decode_limits(input: &[u8]) -> IResult<&[u8], Limits> {
 }
 
 fn decode_expr(input: &[u8]) -> IResult<&[u8], u32> {
-    let (input, _) = match leb128_u32::<&[u8], ()>(input) {
-        Ok(result) => result,
-        Err(_) => {
-            return Err(nom::Err::Error(nom::error::Error::new(
-                input,
-                nom::error::ErrorKind::Verify,
-            )));
-        }
-    };
-
-    let (input, offset) = match leb128_u32::<&[u8], ()>(input) {
-        Ok(result) => result,
-        Err(_) => {
-            return Err(nom::Err::Error(nom::error::Error::new(
-                input,
-                nom::error::ErrorKind::Verify,
-            )));
-        }
-    };
-
-    let (input, _) = match leb128_u32::<&[u8], ()>(input) {
-        Ok(result) => result,
-        Err(_) => {
-            return Err(nom::Err::Error(nom::error::Error::new(
-                input,
-                nom::error::ErrorKind::Verify,
-            )));
-        }
-    };
+    let (input, _) = leb128_u32_(input)?;
+    let (input, offset) = leb128_u32_(input)?;
+    let (input, _) = leb128_u32_(input)?;
 
     Ok((input, offset))
 }
 
 fn decode_data_section(input: &[u8]) -> IResult<&[u8], Vec<Data>> {
-    let (mut input, count) = match leb128_u32::<&[u8], ()>(input) {
-        Ok(result) => result,
-        Err(_) => {
-            return Err(nom::Err::Error(nom::error::Error::new(
-                input,
-                nom::error::ErrorKind::Verify,
-            )));
-        }
-    };
+    let (mut input, count) = leb128_u32_(input)?;
 
     let mut data = vec![];
 
     for _ in 0..count {
-        let (rest, memory_index) = match leb128_u32::<&[u8], ()>(input) {
-            Ok(result) => result,
-            Err(_) => {
-                return Err(nom::Err::Error(nom::error::Error::new(
-                    input,
-                    nom::error::ErrorKind::Verify,
-                )));
-            }
-        };
+        let (rest, memory_index) = leb128_u32_(input)?;
         let (rest, offset) = decode_expr(rest)?;
-        let (rest, size) = match leb128_u32::<&[u8], ()>(rest) {
-            Ok(result) => result,
-            Err(_) => {
-                return Err(nom::Err::Error(nom::error::Error::new(
-                    rest,
-                    nom::error::ErrorKind::Verify,
-                )));
-            }
-        };
+        let (rest, size) = leb128_u32_(rest)?;
         let (rest, init) = take(size)(rest)?;
         data.push(Data {
             memory_index,
